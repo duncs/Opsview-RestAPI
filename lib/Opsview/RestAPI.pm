@@ -16,16 +16,20 @@ use Opsview::RestAPI::Exception;
 
 =head1 SYNOPSIS
 
-use Opsview::RestAPI;
+  use Opsview::RestAPI;
 
-my $rest=Opsview::RestAPI();
+  my $rest=Opsview::RestAPI();
+  # equivalent to
+  my $rest=Opsview::RestAPI(
+      url => 'http://localhost',
+      username => 'admin',
+      password => 'initial',
+  );
 
-# equivalent to
-my $rest=Opsview::RestAPI(
-    url => 'http://localhost',
-    username => 'admin',
-    password => 'initial',
-);
+  my %api_version=$rest->api_version;
+  $rest->login;
+  my %opsview_version=$rest->opsview_version;
+  $rest->logout;
 
 =head1 DESCRIPTION
 
@@ -39,6 +43,10 @@ See L<https://knowledge.opsview.com/reference> for more details.
 =item $rest = Opsview::RestAPI->new();
 
 Create an object using default values for 'url', 'username' and 'password'.
+Extra options are:
+
+  ssl_verify_hostname => 1
+  debug => 0
 
 =cut
 
@@ -90,7 +98,9 @@ sub _dump {
 }
 
 =item $url = $rest->url;
+
 =item $username = $rest->username;
+
 =item $password = $rest->password;
 
 Return the settings the object was configured with
@@ -231,10 +241,12 @@ sub login {
     return $self;
 }
 
-=item %api_version = $rest->api_version
+=item $api_version = $rest->api_version
 
-Return ahash with details about the Rest API version in 
-the Opsview instance.  May be called before C<login>
+Return a hash reference with details about the Rest API version in 
+the Opsview Monitor instance.  May be called without being logged in.
+
+Example hashref:
 
   {
     api_min_version => "2.0",
@@ -255,7 +267,20 @@ sub api_version {
 
 =item $version = $rest->opsview_info
 
-Return the version number of the Opsview Monitor instance
+Return a hash reference contianing some details about the Opsview 
+Monitor instance.
+
+Example hashref:
+
+  {
+    hosts_limit            => "25",
+    opsview_build          => "5.4.0.171741442",
+    opsview_edition        => "commercial",
+    opsview_version        => "5.4.0",
+    server_timezone        => "Europe/London",
+    server_timezone_offset => 0,
+    uuid                   => "ABCDEF12-ABCD-ABCD-ABCD-ABCDEFABCDEF",
+  }
 
 =cut
 
@@ -279,7 +304,7 @@ sub opsview_build {
     return $self->{opsview_info}->{opsview_build};
 }
 
-=item $interval = $rest->interval
+=item $interval = $rest->interval($seconds);
 
 Return the interval to use when setting check_interval or retry_interval.  
 Opsview 4.x used seconds whereas Opsview 5.x uses minutes.  
@@ -311,13 +336,83 @@ sub interval {
 }
 
 =item $result = $rest->get( api => ..., data => { ... }, params => { ... } );
+
 =item $result = $rest->post( api => ..., data => { ... }, params => { ... } );
+
 =item $result = $rest->put( api => ..., data => { ... }, params => { ... } );
+
 =item $result = $rest->delete( api => ..., data => { ... }, params => { ... } );
 
 Method call on the Rest API to interact with Opsview.  See the online
 documentation at L<https://knowledge.opsview.com/reference> for more 
 information.
+
+The endpoint, data and parameters are all specified as a hash passed to the
+method.  See L<examples/perldoc_examples> to see them in use.
+
+To create a Host Template called 'AAA', for example:
+
+  $rest->put(
+    api  => 'config/servicegroup',
+    data => { name => 'AAA' },
+  );
+
+To check if a plugin exists
+
+  $result = $rest->get(
+    api    => 'config/plugin/exists',
+    params => { name => 'check_plugin_name', }
+  );
+  if ( $result->{exists} == 1 ) { .... }
+
+To create a user:
+  $rest->put(
+    api  => 'config/contact',
+    data => {       
+    name        => 'userid',
+    fullname    => 'User Name',
+    password    => $some_secure_password,
+    role        => { name => 'View all, change none', },
+    enable_tips => 0,
+    variables => 
+      [ { name => "EMAIL", value => 'email@example.com' }, ],
+    },
+  );
+
+To search for a host called 'MyHost0' and print specific details.  Note, some
+API endpoints will always return an array, no matter how many objects are 
+returned:
+
+  $hosts = $rest->get(
+    api => 'config/host',
+    params => {
+      'json_filter' => '{"name":"MyHost0"}',
+    }
+  );
+  $myhost = $hosts->list->[0];
+  print "Opsview Host ID: ", $myhost->{id}, $/;
+  print "Hostgroup: ", $myhost->{hostgroup}->{name}, $/;
+  print "IP Address: ", $myhost->{ip}, $/;
+
+For some objects it may be useful to print out the returned data structure
+so you can see what can be modified. Using the ID of the above host:
+
+  use Data::Dump qw( pp );
+  $hosts = $rest->get(
+    api => 'config/host/2'
+  );
+  $myhost = $hosts->list->[0];
+  print pp($host); # prints the data structure to STDOUT 
+
+The data can then be modified and sent back using 'put' (put updates, 
+post creates):
+
+  $myhost->{ip} = '127.10.10.10';
+  $result = $rest->put(
+    api => 'config/host/2',
+    data => { %$myhost },
+  );
+  print pp($result); # contains full updated host info from Opsview
 
 =cut
 
@@ -343,7 +438,9 @@ sub delete {
 
 =item $result = $rests->reload();
 
-Make a request to initiate a synchronous reload
+Make a request to initiate a synchronous reload.  An alias to
+
+  $rest->post( api => 'reload' );
 
 =cut
 
@@ -351,8 +448,8 @@ sub reload { return $_[0]->post( api => 'reload' ) }
 
 =item  $result = $rest->logout();
 
-Delete the login session helpd by Opsview and invalidate the internal data 
-structures.
+Delete the login session held by Opsview Monitor and invalidate the 
+internally stored data structures.
 
 =cut
 
@@ -383,5 +480,7 @@ sub DESTROY {
 }
 
 =back
+
+=cut
 
 1;
