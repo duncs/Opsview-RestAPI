@@ -29,7 +29,7 @@ env:
     - RELEASE_TESTING=1
     - AUTHOR_TESTING=1
 before_install:
-    - "cpanm Dist::Zilla"
+    - "cpanm -v Dist::Zilla"
 #    - "cpanm Dist::Zilla::Plugin::MakeMaker::Awesome" # not required for this module
     - "cpanm Pod::Weaver::Plugin::StopWords"
     - "cpanm Pod::Weaver::Section::Support"
