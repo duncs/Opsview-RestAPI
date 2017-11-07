@@ -32,6 +32,7 @@ before_install:
     - cpanm -v Pod::Elemental::Transformer::List 
     - perldoc -lm Pod::Elemental::Transformer::List
     - eval $(curl https://travis-perl.github.io/init) --auto
+    - cpanm -v Dist::Zilla::PluginBundle::Git
     - perldoc -lm Dist::Zilla::PluginBundle::Git
 #    - "cpanm -v Dist::Zilla"
 ##    - "cpanm Dist::Zilla::Plugin::MakeMaker::Awesome" # not required for this module
@@ -49,4 +50,3 @@ install:
   - dzil listdeps | xargs cpanm"
 script: 
   - dzil test --release
-
