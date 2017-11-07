@@ -366,6 +366,7 @@ To check if a plugin exists
   if ( $result->{exists} == 1 ) { .... }
 
 To create a user:
+
   $rest->put(
     api  => 'config/contact',
     data => {       
