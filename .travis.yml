@@ -32,6 +32,7 @@ before_install:
     - cpanm -v Pod::Elemental::Transformer::List 
     - perldoc -lm Pod::Elemental::Transformer::List
     - eval $(curl https://travis-perl.github.io/init) --auto
+    - perldoc -lm Dist::Zilla::PluginBundle::Git
 #    - "cpanm -v Dist::Zilla"
 ##    - "cpanm Dist::Zilla::Plugin::MakeMaker::Awesome" # not required for this module
 #    - "cpanm Pod::Weaver::Plugin::StopWords"
@@ -43,6 +44,9 @@ before_install:
 #    - "export tmpbuild=`mktemp --directory`"
 #    - "dzil build --in $tmpbuild"
 #    - "perl -MCPAN::Meta -e '$,=\"\\n\"; print CPAN::Meta->load_file(\"$ENV{tmpbuild}/META.json\")->effective_prereqs->requirements_for(\"develop\", \"requires\")->required_modules' | xargs cpanm"
-install: "dzil listdeps | xargs cpanm"
-script: "dzil test --release"
+install: 
+  - dzil listdeps
+  - dzil listdeps | xargs cpanm"
+script: 
+  - dzil test --release
 
