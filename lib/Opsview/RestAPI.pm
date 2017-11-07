@@ -301,6 +301,7 @@ Return the build number of the Opsview Monitor instance
 
 sub opsview_build {
     my ($self) = @_;
+    $self->opsview_info;
     return $self->{opsview_info}->{opsview_build};
 }
 
