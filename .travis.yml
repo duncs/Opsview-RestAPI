@@ -47,8 +47,8 @@ before_install:
 #    - "perl -MCPAN::Meta -e '$,=\"\\n\"; print CPAN::Meta->load_file(\"$ENV{tmpbuild}/META.json\")->effective_prereqs->requirements_for(\"develop\", \"requires\")->required_modules' | xargs cpanm"
 install: 
   - dzil authordeps --missing
-  - dzil authordeps --missing | xargs cpanm
+  - dzil authordeps --missing | xargs cpanm --notest
   - dzil listdeps
-  - dzil listdeps | xargs cpanm
+  - dzil listdeps | xargs cpanm --notest
 script: 
   - dzil test --release
