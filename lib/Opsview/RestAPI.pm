@@ -116,7 +116,7 @@ sub _query {
     croak "Unknown type '$args{type}'"
         if ( $args{type} !~ m/^(GET|POST|PUT|DELETE)$/ );
 
-    croak ( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
+    croak( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
         unless ( $self->{token}
         || !defined( $args{api} )
         || !$args{api}
@@ -197,8 +197,8 @@ sub login {
     if ( $api_version->{api_version} < 4.0 ) {
         croak(
             Opsview::RestPI::Exception->new(
-                message => $self->{url}.
-                " is running Opsview version "
+                message => $self->{url}
+                    . " is running Opsview version "
                     . $api_version->{api_version}
                     . ".  Need at least version 4.0",
                 http_code => 505,
@@ -286,7 +286,7 @@ Example hashref:
 
 sub opsview_info {
     my ($self) = @_;
-    if(!$self->{opsview_info} ) {
+    if ( !$self->{opsview_info} ) {
         $self->_log( 2, "Fetching opsview_info information" );
         $self->{opsview_info} = $self->get( api => 'info' );
     }
@@ -448,6 +448,18 @@ Make a request to initiate a synchronous reload.  An alias to
 
 sub reload { return $_[0]->post( api => 'reload' ) }
 
+=item $result = $rest->reload_pending();
+
+Check to see if there are any pending rconfigurfation changes that require
+a reload to be performed
+
+=cut
+
+sub reload_pending {
+    my $result = $_[0]->get( api => 'reload' );
+    return $result->{configuration_status} eq 'pending' ? 1 : 0;
+}
+
 =item  $result = $rest->logout();
 
 Delete the login session held by Opsview Monitor and invalidate the 
@@ -467,12 +479,82 @@ sub logout {
     $self->_log( 1, "Successfully logged out from $self->{url}" );
 
     # invalidate all the info held internally
-    $self->{token} = undef;
-    $self->{api_version} = undef;
+    $self->{token}        = undef;
+    $self->{api_version}  = undef;
     $self->{opsview_info} = undef;
 
     $self->_log( 2, "Token removed" );
     return $self;
+}
+
+# Taken output Opsview::Utils so that module does not need to be installed
+#
+=item $rest->remove_keys_from_hash($hashref, $arrayref);
+
+=cut
+
+sub remove_keys_from_hash {
+    my ( $class, $hash, $allowed_keys, $do_not_die_on_non_hash ) = @_;
+
+    use DDP;
+
+    say "type: ", ref($hash);
+    say "hash: ", p($hash);
+
+    if ( ref $hash ne "HASH" ) {
+
+        # Double negative as default is to die
+        unless ($do_not_die_on_non_hash) {
+            die "Not a HASH: $hash";
+        }
+        return $hash;
+    }
+
+    # We cache the keys_list into
+    if ( !defined $allowed_keys ) {
+        die "Must specify $allowed_keys";
+    }
+
+    # OK
+    elsif ( ref $allowed_keys eq "HASH" ) {
+
+    }
+    elsif ( ref $allowed_keys eq "ARRAY" ) {
+        my @temp = @$allowed_keys;
+        $allowed_keys = {};
+        map { $allowed_keys->{$_} = 1 } @temp;
+    }
+    elsif ( ref $allowed_keys ) {
+        $allowed_keys = { $allowed_keys => 1 };
+    }
+    else {
+        die "allowed_keys incorrect";
+    }
+
+    p($allowed_keys);
+
+    foreach my $k ( keys %$hash ) {
+        if ( exists $allowed_keys->{$k} ) {
+            delete $hash->{$k};
+        }
+        elsif ( ref $hash->{$k} eq "ARRAY" ) {
+            say "array on $k";
+            my @new_list;
+            foreach my $item ( @{ $hash->{$k} } ) {
+                push @new_list,
+                    $class->remove_keys_from_hash( $item, $allowed_keys,
+                    $do_not_die_on_non_hash );
+            }
+            $hash->{$k} = \@new_list;
+        }
+        elsif ( ref $hash->{$k} eq "HASH" ) {
+            say "hash on $k";
+            $hash->{$k}
+                = $class->remove_keys_from_hash( $hash->{$k}, $allowed_keys,
+                $do_not_die_on_non_hash );
+        }
+    }
+    return $hash;
 }
 
 sub DESTROY {

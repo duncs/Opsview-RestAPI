@@ -4,6 +4,7 @@ use warnings;
 
 use Test::More;
 use Test::Trap qw/ :on_fail(diag_all_once) /;
+use Data::Dump qw(pp);
 
 my %opsview = (
     url      => 'http://localhost',
@@ -133,6 +134,42 @@ SKIP: {
         "Not logged in",
         "Exception stringified to 'Not logged in' correctly"
     );
+
+    #log back in and check for a pending reload
+    $rest->login;
+    $output = trap {
+        $rest->reload_pending();
+    };
+    $trap->did_return("reload_pending was returned");
+    $trap->quiet("no further errors on reload_pending");
+
+    is($output, 0, "No pending changes");
+    # make a change and check it again
+
+    trap {
+    $rest->put(
+        api  => 'config/contact/1',
+        data => {
+            enable_tips => 0,
+        },
+    );
+    };
+    $trap->did_return("config change for admin contact was okay");
+    $trap->quiet("no further errors on admin contact change");
+
+    # now test pending changes again
+    $output = trap {
+        $rest->reload_pending();
+    };
+    $trap->did_return("reload_pending was returned");
+    $trap->quiet("no further errors on reload_pending");
+
+    ok($output > 0, "Pending change found");
+
+    diag("output: ", pp($output));
+
+
+    # check to see if there are any pending changes.
 }
 
 done_testing();

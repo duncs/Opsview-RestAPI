@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.173110
+version 1.173180
 
 =head1 SYNOPSIS
 
@@ -140,6 +140,7 @@ To check if a plugin exists
   if ( $result->{exists} == 1 ) { .... }
 
 To create a user:
+
   $rest->put(
     api  => 'config/contact',
     data => {       
@@ -194,10 +195,17 @@ Make a request to initiate a synchronous reload.  An alias to
 
   $rest->post( api => 'reload' );
 
+=item $result = $rest->reload_pending();
+
+Check to see if there are any pending rconfigurfation changes that require
+a reload to be performed
+
 =item $result = $rest->logout();
 
 Delete the login session held by Opsview Monitor and invalidate the 
 internally stored data structures.
+
+=item $rest->remove_keys_from_hash($hashref, $arrayref);
 
 =back
 
