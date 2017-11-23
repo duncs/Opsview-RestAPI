@@ -123,6 +123,7 @@ sub _query {
         || $args{api} =~ m/login/ );
 
     my $type   = $args{type};
+    $args{api} =~ s!^/rest/!!; # tidy any 'ref' URL we may have been given
     my $url    = "/rest/" . ( $args{api} || '' );
     my $params = join '&',
         map { "$_=" . $args{params}{$_} } keys( %{ $args{params} } );
