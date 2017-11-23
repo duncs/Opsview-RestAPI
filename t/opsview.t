@@ -57,8 +57,8 @@ SKIP: {
                 . $trap->die->message;
             $message =~ s/\n/ /g;
 
-            my $exit_msg = 
-                "The configured URL '$opsview{url}' does NOT appear to be an opsview server: "
+            my $exit_msg
+                = "The configured URL '$opsview{url}' does NOT appear to be an opsview server: "
                 . $message;
             diag $exit_msg;
             skip $exit_msg;
@@ -143,16 +143,15 @@ SKIP: {
     $trap->did_return("reload_pending was returned");
     $trap->quiet("no further errors on reload_pending");
 
-    is($output, 0, "No pending changes");
+    is( $output, 0, "No pending changes" );
+
     # make a change and check it again
 
     trap {
-    $rest->put(
-        api  => 'config/contact/1',
-        data => {
-            enable_tips => 0,
-        },
-    );
+        $rest->put(
+            api  => 'config/contact/1',
+            data => { enable_tips => 0, },
+        );
     };
     $trap->did_return("config change for admin contact was okay");
     $trap->quiet("no further errors on admin contact change");
@@ -164,12 +163,78 @@ SKIP: {
     $trap->did_return("reload_pending was returned");
     $trap->quiet("no further errors on reload_pending");
 
-    ok($output > 0, "Pending change found");
+    ok( $output > 0, "Pending change found" );
 
-    diag("output: ", pp($output));
+    # does a reload work
+    note('Running a reload');
+    $output = trap {
+        $rest->reload();
+    };
+    $trap->did_return("reload was returned");
+    $trap->quiet("no further errors on reload");
 
+    $output = trap {
+        $rest->reload_pending();
+    };
+    $trap->did_return("reload_pending was returned");
+    $trap->quiet("no further errors on reload_pending");
 
-    # check to see if there are any pending changes.
+    is( $output, 0, "No pending changes" );
+
+    check_batched_endpoint('host');
+    check_batched_endpoint('hosttemplate');
+    TODO: {
+        local $TODO = "May fail on larger or slower systems due to Apache2 proxy timeout";
+        check_batched_endpoint('servicecheck');
+    };
+}
+
+sub check_batched_endpoint {
+    my ($endpoint) = @_;
+
+    note("Checking unbatched/batched get for endpoint 'config/$endpoint'");
+
+    my $unbatched_endpoint = trap {
+        $rest->get(
+            api    => 'config/' . $endpoint,
+            params => { rows => 'all' }
+        );
+    };
+    $trap->did_return("config/$endpoint was returned");
+    $trap->quiet("no further errors on config/$endpoint");
+
+    is( ref($unbatched_endpoint),
+        "HASH", "config/$endpoint output is a hash" );
+    ok( $unbatched_endpoint->{summary}->{allrows} > 0,
+        "config/$endpoint returns multiple ${endpoint}s"
+    );
+
+    note(
+        "Got unbatched $unbatched_endpoint->{summary}->{allrows} ${endpoint}s"
+    );
+    note( "Unbatched summary: ", pp( $unbatched_endpoint->{summary} ) );
+
+    my $batched_endpoint = trap {
+        $rest->get( api => 'config/' . $endpoint, batch_size => 5 );
+    };
+    $trap->did_return("batched config/$endpoint was returned");
+    $trap->quiet("no further errors on batched config/$endpoint");
+
+    is( ref($batched_endpoint),
+        "HASH", "batched config/$endpoint output is a hash" );
+    ok( $batched_endpoint->{summary}->{allrows} > 0,
+        "batched config/$endpoint returns multiple ${endpoint}s" );
+
+    note("Got batched $batched_endpoint->{summary}->{allrows} ${endpoint}s");
+    note( "Batched summary: ", pp( $batched_endpoint->{summary} ) );
+
+    # got, expected, text
+    is_deeply( $batched_endpoint, $unbatched_endpoint,
+        "Batched vs unbatched ${endpoint}s match" );
+
+    #note("unbatched: ", pp($unbatched_endpoint));
+    #note("#" x 50);
+    #note("batched: ", pp($batched_endpoint));
 }
 
 done_testing();

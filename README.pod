@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.173180
+version 1.173270
 
 =head1 SYNOPSIS
 
@@ -188,6 +188,28 @@ post creates):
     data => { %$myhost },
   );
   print pp($result); # contains full updated host info from Opsview
+
+Be aware that fetching or sending too much data in one go may cause a timeout 
+via the proxy server used with Opsview (Apache2 by default) so processing the 
+data in batches in the client may be required.  
+
+C<get> (only) will handle this batching of data for you if you use the option 
+C<batch_size => <size>> (all other methods ignore this).
+
+  $hosts = $rest->get(
+    api => 'config/host/2'
+    batch_size => 50,
+  );
+
+The data returned should appear the same as if the following were used:
+
+  $hosts = $rest->get(
+    api => 'config/host/2'
+    params => { rows => 'all' },
+  );
+
+You canot specify both the 'rows' param and 'batch_size'.  All other parameters
+should be accepted.
 
 =item $result = $rests->reload();
 

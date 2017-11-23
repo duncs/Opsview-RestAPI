@@ -122,9 +122,9 @@ sub _query {
         || !$args{api}
         || $args{api} =~ m/login/ );
 
-    my $type   = $args{type};
-    $args{api} =~ s!^/rest/!!; # tidy any 'ref' URL we may have been given
-    my $url    = "/rest/" . ( $args{api} || '' );
+    my $type = $args{type};
+    $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
+    my $url = "/rest/" . ( $args{api} || '' );
     my $params = join '&',
         map { "$_=" . $args{params}{$_} } keys( %{ $args{params} } );
     $url .= '?' . $params;
@@ -417,6 +417,28 @@ post creates):
   );
   print pp($result); # contains full updated host info from Opsview
 
+Be aware that fetching or sending too much data in one go may cause a timeout 
+via the proxy server used with Opsview (Apache2 by default) so processing the 
+data in batches in the client may be required.  
+
+C<get> (only) will handle this batching of data for you if you use the option 
+C<batch_size => <size>> (all other methods ignore this).
+
+  $hosts = $rest->get(
+    api => 'config/host/2'
+    batch_size => 50,
+  );
+
+The data returned should appear the same as if the following were used:
+
+  $hosts = $rest->get(
+    api => 'config/host/2'
+    params => { rows => 'all' },
+  );
+
+You canot specify both the 'rows' param and 'batch_size'.  All other parameters
+should be accepted.
+
 =cut
 
 sub post {
@@ -426,6 +448,63 @@ sub post {
 
 sub get {
     my ( $self, %args ) = @_;
+
+    if ( $args{batch_size} && $args{params}{rows} ) {
+        croak(
+            Opsview::RestAPI::Exception->new(
+                message => "Cannot specify both 'batch_size' and 'rows'"
+            )
+        );
+    }
+
+    if ( $args{batch_size} ) {
+        my @data;
+
+        my %hash = (
+            list    => \@data,
+            summary => {
+                allrows => 0,
+                rows    => 0,
+            }
+        );
+
+        # fetch just summary information for what we are after
+        my %get_args = %args;
+        $get_args{params}{rows} = 0;
+        delete( $get_args{batch_size} );
+
+        $self->_log( 1, "batch_size request: fetching summary data only" );
+        my $summary = $self->_query( %get_args, type => 'GET' );
+
+   # This is reassembled to make it look like everything was fetched in one go
+        $hash{summary}{allrows} = $summary->{summary}->{allrows};
+        $hash{summary}{rows}    = $summary->{summary}->{allrows};
+
+        my $totalpages
+            = int( $summary->{summary}->{allrows} / $args{batch_size} ) + 1;
+
+        $self->_log( 2,
+            "Fetching $hash{summary}{allrows} rows in batches of $args{batch_size}, $totalpages pages to fetch"
+        );
+        my $start_time = time();
+
+        # now start fetching the data in batch_size increments
+        my $page = 0;
+        $get_args{params}{rows} = $args{batch_size};
+        while ( $page++ < $totalpages ) {
+
+            $get_args{params}{page} = $page;
+            $self->_log( 3, "About to fetch page $page" );
+            my $result = $self->_query( %get_args, type => 'GET' );
+
+            push( @data, @{ $result->{list} } );
+        }
+
+        my $elapsed_time = time() - $start_time;
+        $self->_log( 2, "Fetch completed in ${elapsed_time}s" );
+
+        return \%hash;
+    }
     return $self->_query( %args, type => 'GET' );
 }
 
@@ -490,6 +569,7 @@ sub logout {
 
 # Taken output Opsview::Utils so that module does not need to be installed
 #
+
 =item $rest->remove_keys_from_hash($hashref, $arrayref);
 
 =cut
