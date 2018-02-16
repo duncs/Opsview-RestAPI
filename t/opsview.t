@@ -5,6 +5,8 @@ use warnings;
 use Test::More;
 use Test::Trap qw/ :on_fail(diag_all_once) /;
 use Data::Dump qw(pp);
+use Test::Deep;
+use Storable 'dclone';
 
 my %opsview = (
     url      => 'http://localhost',
@@ -183,10 +185,56 @@ SKIP: {
 
     check_batched_endpoint('host');
     check_batched_endpoint('hosttemplate');
-    TODO: {
-        local $TODO = "May fail on larger or slower systems due to Apache2 proxy timeout";
+TODO: {
+        local $TODO
+            = "May fail on larger or slower systems due to Apache2 proxy timeout";
         check_batched_endpoint('servicecheck');
+    }
+
+    # test to strip out 'ref' hash entries
+    $output = trap {
+        $rest->get( api => 'config/hostcheckcommand' );
     };
+    $trap->did_return("fetched host check commands using get");
+    $trap->quiet("no further errors on get");
+
+    # use dclone to deep copy the hasref somewhere new
+    my $amended = $rest->remove_keys_from_hash( dclone($output), ['ref'] );
+
+    my $output_copy = dclone($output);
+    is_deeply(
+        $amended,
+        remove_refs_from_data($output_copy),
+        "ref keys removed"
+    );
+
+    #my $stack = cmp_deeply($amended, remove_refs_from_data($output));
+    #eq_deeply($amended, remove_refs_from_data($output)) || deep_diag($stack);
+}
+
+sub remove_refs_from_data {
+    my ($data) = @_;
+
+    BAIL_OUT("Wrong type of data passed") unless ref($data) eq "HASH";
+
+    for my $key ( keys %{$data} ) {
+        if ( $key eq 'ref' ) {
+            delete $data->{$key};
+            next;
+        }
+        if ( ref $data->{$key} eq 'HASH' ) {
+            $data->{$key} = remove_refs_from_data( $data->{$key} );
+        }
+        if ( ref $data->{$key} eq 'ARRAY' ) {
+            my @newlist;
+            for my $item ( @{ $data->{$key} } ) {
+                push( @newlist, remove_refs_from_data($item) );
+            }
+            $data->{$key} = \@newlist;
+        }
+    }
+
+    return $data;
 }
 
 sub check_batched_endpoint {
@@ -215,7 +263,7 @@ sub check_batched_endpoint {
     note( "Unbatched summary: ", pp( $unbatched_endpoint->{summary} ) );
 
     my $batched_endpoint = trap {
-        $rest->get( api => 'config/' . $endpoint, batch_size => 5 );
+        $rest->get( api => 'config/' . $endpoint, batch_size => 20 );
     };
     $trap->did_return("batched config/$endpoint was returned");
     $trap->quiet("no further errors on batched config/$endpoint");
