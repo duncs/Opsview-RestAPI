@@ -126,7 +126,7 @@ sub _query {
     $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
     my $url = "/rest/" . ( $args{api} || '' );
     my $params = join '&',
-        map { "$_=" . $args{params}{$_} } keys( %{ $args{params} } );
+        map { "$_=" . uri_encode( $args{params}{$_} ) } keys( %{ $args{params} } );
     $url .= '?' . $params;
     my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
 
@@ -567,7 +567,7 @@ sub logout {
     return $self;
 }
 
-# Taken output Opsview::Utils so that module does not need to be installed
+# Copied from Opsview::Utils so that module does not need to be installed
 #
 
 =item $rest->remove_keys_from_hash($hashref, $arrayref);
@@ -576,11 +576,6 @@ sub logout {
 
 sub remove_keys_from_hash {
     my ( $class, $hash, $allowed_keys, $do_not_die_on_non_hash ) = @_;
-
-    use DDP;
-
-    say "type: ", ref($hash);
-    say "hash: ", p($hash);
 
     if ( ref $hash ne "HASH" ) {
 
@@ -612,14 +607,11 @@ sub remove_keys_from_hash {
         die "allowed_keys incorrect";
     }
 
-    p($allowed_keys);
-
     foreach my $k ( keys %$hash ) {
         if ( exists $allowed_keys->{$k} ) {
             delete $hash->{$k};
         }
         elsif ( ref $hash->{$k} eq "ARRAY" ) {
-            say "array on $k";
             my @new_list;
             foreach my $item ( @{ $hash->{$k} } ) {
                 push @new_list,
@@ -629,7 +621,6 @@ sub remove_keys_from_hash {
             $hash->{$k} = \@new_list;
         }
         elsif ( ref $hash->{$k} eq "HASH" ) {
-            say "hash on $k";
             $hash->{$k}
                 = $class->remove_keys_from_hash( $hash->{$k}, $allowed_keys,
                 $do_not_die_on_non_hash );
