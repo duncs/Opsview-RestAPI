@@ -30,8 +30,8 @@ env:
     - AUTHOR_TESTING=1
 before_install:
 #    upgrade DIst::Zilla to 6.010
-    - "cpanm -v Dist::Zilla"
     - eval $(curl https://travis-perl.github.io/init) --auto
+    - "cpanm -v Dist::Zilla"
 ##    - cpanm -v Pod::Elemental::Transformer::List 
 ##    - perldoc -lm Pod::Elemental::Transformer::List
 ##    - cpanm -v Dist::Zilla::PluginBundle::Git
