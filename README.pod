@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.180480
+version 1.180570
 
 =head1 SYNOPSIS
 
@@ -234,7 +234,7 @@ Upload the given file to the server.  For a plugin:
 
 NOTE: This will only upload the plugin; it will not import it.  Use the following:
 
-    $result = $rest->post_query(
+    $result = $rest->post(
         api => "config/plugin/import",
         params => {
             filename => 'check_random',

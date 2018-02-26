@@ -576,7 +576,7 @@ Upload the given file to the server.  For a plugin:
 
 NOTE: This will only upload the plugin; it will not import it.  Use the following:
 
-    $result = $rest->post_query(
+    $result = $rest->post(
         api => "config/plugin/import",
         params => {
             filename => 'check_random',

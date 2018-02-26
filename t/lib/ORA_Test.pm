@@ -102,7 +102,7 @@ sub login {
     $trap->did_return("Got opsview_info when logged in");
     $trap->quiet("No extra output");
 
-    diag("output: ", pp($output));
+    note("output: ", pp($output));
 
     return $rest;
 }
