@@ -29,22 +29,23 @@ env:
     - RELEASE_TESTING=1
     - AUTHOR_TESTING=1
 before_install:
-#    - cpanm -v Pod::Elemental::Transformer::List 
-#    - perldoc -lm Pod::Elemental::Transformer::List
+#    upgrade DIst::Zilla to 6.010
+    - "cpanm -v Dist::Zilla"
     - eval $(curl https://travis-perl.github.io/init) --auto
-#    - cpanm -v Dist::Zilla::PluginBundle::Git
-#    - perldoc -lm Dist::Zilla::PluginBundle::Git
-#    - "cpanm -v Dist::Zilla"
-##    - "cpanm Dist::Zilla::Plugin::MakeMaker::Awesome" # not required for this module
-#    - "cpanm Pod::Weaver::Plugin::StopWords"
-#    - "cpanm Pod::Weaver::Section::Support"
-#    # needed for DZP::GitHub
-#    - "git config --global github.user duncs"
-#    # install dist development dependencies
-#    - "dzil authordeps | xargs cpanm"
-#    - "export tmpbuild=`mktemp --directory`"
-#    - "dzil build --in $tmpbuild"
-#    - "perl -MCPAN::Meta -e '$,=\"\\n\"; print CPAN::Meta->load_file(\"$ENV{tmpbuild}/META.json\")->effective_prereqs->requirements_for(\"develop\", \"requires\")->required_modules' | xargs cpanm"
+##    - cpanm -v Pod::Elemental::Transformer::List 
+##    - perldoc -lm Pod::Elemental::Transformer::List
+##    - cpanm -v Dist::Zilla::PluginBundle::Git
+##    - perldoc -lm Dist::Zilla::PluginBundle::Git
+###    - "cpanm Dist::Zilla::Plugin::MakeMaker::Awesome" # not required for this module
+##    - "cpanm Pod::Weaver::Plugin::StopWords"
+##    - "cpanm Pod::Weaver::Section::Support"
+##    # needed for DZP::GitHub
+##    - "git config --global github.user duncs"
+##    # install dist development dependencies
+##    - "dzil authordeps | xargs cpanm"
+##    - "export tmpbuild=`mktemp --directory`"
+##    - "dzil build --in $tmpbuild"
+##    - "perl -MCPAN::Meta -e '$,=\"\\n\"; print CPAN::Meta->load_file(\"$ENV{tmpbuild}/META.json\")->effective_prereqs->requirements_for(\"develop\", \"requires\")->required_modules' | xargs cpanm"
 install: 
   - dzil --version
   - dzil authordeps --missing
