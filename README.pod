@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.180470
+version 1.180480
 
 =head1 SYNOPSIS
 
@@ -221,6 +221,26 @@ Make a request to initiate a synchronous reload.  An alias to
 
 Check to see if there are any pending rconfigurfation changes that require
 a reload to be performed
+
+=item $result = $rest->file_upload( api => ..., local_file => ..., remote_file => ... );
+
+Upload the given file to the server.  For a plugin:
+
+    $result = $rest->file_upload(
+        api => 'config/plugin/upload',
+        local_file => "$Bin/check_random",
+        remote_file => "check_random",
+    );
+
+NOTE: This will only upload the plugin; it will not import it.  Use the following:
+
+    $result = $rest->post_query(
+        api => "config/plugin/import",
+        params => {
+            filename => 'check_random',
+            overwrite  => 1
+        },
+    );
 
 =item $result = $rest->logout();
 

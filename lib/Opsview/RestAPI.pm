@@ -111,28 +111,8 @@ sub url      { return $_[0]->{url} }
 sub username { return $_[0]->{username} }
 sub password { return $_[0]->{password} }
 
-sub _query {
-    my ( $self, %args ) = @_;
-    croak "Unknown type '$args{type}'"
-        if ( $args{type} !~ m/^(GET|POST|PUT|DELETE)$/ );
-
-    croak( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
-        unless ( $self->{token}
-        || !defined( $args{api} )
-        || !$args{api}
-        || $args{api} =~ m/login/ );
-
-    my $type = $args{type};
-    $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
-    my $url = "/rest/" . ( $args{api} || '' );
-    my $params = join '&',
-        map { "$_=" . uri_encode( $args{params}{$_} ) } keys( %{ $args{params} } );
-    $url .= '?' . $params;
-    my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
-
-    $self->_log( 2, "TYPE: $type URL: $url DATA: ", pp($data) );
-
-    $self->_client->$type( $url, $data );
+sub _parse_response {
+    my ($self) = @_;
 
     my $deadlock_attempts = 0;
 DEADLOCK: {
@@ -149,12 +129,13 @@ DEADLOCK: {
                 redo DEADLOCK;
             }
             else {
-                my %json = eval {
-                    $self->_json->decode( $self->_client->responseContent );
-                };
+                my %json = $self->_parse_response_to_json( $self->_client->responseCode, $self->_client->responseContent);
+#                my %json = eval {
+#                    $self->_json->decode( $self->_client->responseContent );
+#                };
                 my %exception = (
-                    type      => $type,
-                    url       => $url,
+                    type      => $self->{type},
+                    url       => $self->url,
                     http_code => $self->_client->responseCode,
                     %json,
                 );
@@ -168,19 +149,62 @@ DEADLOCK: {
     }
 
     my $result = $self->_client->responseContent();
-    $self->_log( 3, "Raw response: ", $result );
 
-    my $json_result;
-    eval { $json_result = $self->_json->decode($result); };
+    return $self->_parse_response_to_json( $self->_client->responseCode, $self->_client->responseContent() )
+}
+
+sub _parse_response_to_json {
+    my($self, $code, $response) = @_;
+
+    $self->_log( 3, "Raw response: ", $response );
+
+    my $json_result = eval { $self->_json->decode($response); };
 
     if ($@) {
-        print "Failed to decode response from $self->{url}: $@", $/;
-        exit 3;
+        my %exception = (
+            type      => $self->{type},
+            url       => $self->url,
+            http_code => $code,
+            \$json_result,
+        );
+
+        # json parse failed; return the resonse content unmolested
+        $exception{message} = $response unless ( $exception{message} );
+        confess( Opsview::RestAPI::Exception->new(%exception) );
     }
 
     $self->_log( 2, "result: ", pp($json_result) );
 
     return $json_result;
+}
+
+sub _query {
+    my ( $self, %args ) = @_;
+    croak "Unknown type '$args{type}'"
+        if ( $args{type} !~ m/^(GET|POST|PUT|DELETE)$/ );
+
+    croak( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
+        unless ( $self->{token}
+        || !defined( $args{api} )
+        || !$args{api}
+        || $args{api} =~ m/login/ );
+
+    $self->{type} = $args{type};
+    $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
+    my $url = "/rest/" . ( $args{api} || '' );
+    my $params = join '&',
+        map { "$_=" . uri_encode( $args{params}{$_} ) }
+        keys( %{ $args{params} } );
+    $url .= '?' . $params;
+    my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
+
+    $self->_log( 2, "TYPE: $self->{type} URL: $url DATA: ",
+        pp($data) );
+
+    my $type = $self->{type};
+    $self->_client->$type( $url, $data );
+
+    return $self->_parse_response;
 }
 
 =item $rest->login
@@ -538,6 +562,53 @@ a reload to be performed
 sub reload_pending {
     my $result = $_[0]->get( api => 'reload' );
     return $result->{configuration_status} eq 'pending' ? 1 : 0;
+}
+
+=item $result = $rest->file_upload( api => ..., local_file => ..., remote_file => ... );
+
+Upload the given file to the server.  For a plugin:
+
+    $result = $rest->file_upload(
+        api => 'config/plugin/upload',
+        local_file => "$Bin/check_random",
+        remote_file => "check_random",
+    );
+
+NOTE: This will only upload the plugin; it will not import it.  Use the following:
+
+    $result = $rest->post_query(
+        api => "config/plugin/import",
+        params => {
+            filename => 'check_random',
+            overwrite  => 1
+        },
+    );
+
+=cut
+
+# NOTE: use LWP::UserAgent directly to make use of its file upload functionality
+# as REST::Client doesn't allow it to work as expected
+sub file_upload {
+    my ( $self, %args ) = @_;
+
+    my $ua = $self->_client->getUseragent();
+    $ua->default_header( 'Content-Type',       'application/json' );
+    $ua->default_header( 'X-Opsview-Username', $self->{username} );
+    $ua->default_header( 'X-Opsview-Token',    $self->{token} );
+
+    my $url = $self->{url}."/rest/$args{api}";
+    $url .= '/upload' unless $url =~ m!/upload$!;
+
+    #warn "url=$url";
+
+    my $response = $ua->post(
+        $url,
+        Accept       => "text/html",
+        Content_Type => 'form-data',
+        Content => [ filename => [ $args{local_file} => $args{remote_file} ] ]
+    );
+
+    return $self->_parse_response_to_json( $response->code, $response->content );
 }
 
 =item  $result = $rest->logout();
