@@ -29,12 +29,13 @@ env:
     - RELEASE_TESTING=1
     - AUTHOR_TESTING=1
 before_install:
-    - eval $(curl https://travis-perl.github.io/init) --auto
-install: 
+  - eval $(curl https://travis-perl.github.io/init) --auto
   - dzil --version
-  - dzil authordeps --missing
-  - dzil authordeps --missing | xargs cpanm --notest
-  - dzil listdeps
-  - dzil listdeps | xargs cpanm --notest
-script: 
-  - dzil test --release
+#install: 
+#  - dzil --version
+#  - dzil authordeps --missing
+#  - dzil authordeps --missing | xargs cpanm --notest
+#  - dzil listdeps
+#  - dzil listdeps | xargs cpanm --notest
+#script: 
+#  - dzil test --release
