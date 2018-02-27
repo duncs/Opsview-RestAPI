@@ -33,7 +33,8 @@ before_install:
   - eval $(curl https://travis-perl.github.io/init) --auto
   - dzil --version
 #  - dzil authordeps --missing | xargs cpanm --notest
-  - cpanm Test::Warnings 
+#  fixes for updating PPI on some versions of perl
+  - cpanm Test::Warnings Test::ClassAPI
   - cpanm Pod::Coverage::TrustPod Test::Perl::Critic
 #install: 
 #  - dzil --version
