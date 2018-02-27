@@ -33,6 +33,7 @@ before_install:
   - eval $(curl https://travis-perl.github.io/init) --auto
   - dzil --version
 #  - dzil authordeps --missing | xargs cpanm --notest
+  - cpanm Test::Warnings 
   - cpanm Pod::Coverage::TrustPod Test::Perl::Critic
 #install: 
 #  - dzil --version
