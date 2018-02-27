@@ -34,7 +34,7 @@ before_install:
   - dzil --version
 #  - dzil authordeps --missing | xargs cpanm --notest
 #  fixes for updating PPI on some versions of perl
-  - cpanm Perl::MinimumVersion Test::Warnings Test::ClassAPI Test::CPAN::Meta File::Find::Rule::Perl Perl::MinimumVersion
+  - cpanm  --notest Test::Warnings Test::ClassAPI Test::CPAN::Meta File::Find::Rule::Perl Perl::MinimumVersion
   - cpanm Pod::Coverage::TrustPod Test::Perl::Critic
 #install: 
 #  - dzil --version
