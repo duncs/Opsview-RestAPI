@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.180580
+version 1.180750
 
 =head1 SYNOPSIS
 
