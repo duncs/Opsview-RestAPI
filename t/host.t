@@ -28,7 +28,60 @@ SKIP: {
         'opsview', "Pulled opview host configuration" );
     note( "result from import: ", pp($result) );
 
-    $rest = $ora_test->logout();
+    # create a new host
+    $result = trap {
+        $ora_test->rest->put(
+            api  => 'config/host',
+            data => {
+                ip   => "127.0.100.1",
+                name => "OpsviewRestAPI_test"
+            },
+        );
+    };
+    $trap->did_return(" ... returned");
+    $trap->quiet(" ... quietly");
+
+    ok( $result->{object}->{id} > 1,
+        "test host 'OpsviewRestAPI_test' created" );
+
+    note( "Result from create: ", pp($result) );
+
+    my $hostid = $result->{object}->{id};
+
+    # amend the host - add some hostattributes in
+    $result = trap {
+        $ora_test->rest->put(
+            api  => 'config/host/' . $hostid,
+            data => {
+                hostattributes => [
+                    { 'name' => 'WINCREDENTIALS', 'value' => 'VALS' },
+                    { 'name' => 'WINSERVICE',     'value' => 'something' },
+                ]
+            }
+        );
+    };
+    $trap->did_return(" ... returned");
+    $trap->quiet(" ... quietly");
+
+    is( ref( $result->{object}->{hostattributes} ),
+        "ARRAY", "hostattr is array" );
+    is( scalar( @{ $result->{object}->{hostattributes} } ),
+        2, "2 x hostattr" );
+
+    note( "Result from amend ", pp($result) );
+
+    # tidy up after outselves -remove the example host
+    $result = trap {
+        $ora_test->rest->delete( api => 'config/host/' . $hostid, );
+    };
+    $trap->did_return(" ... returned");
+    $trap->quiet(" ... quietly");
+
+    is( $result->{success}, 1, "test host 'OpsviewRestAPI_test' deleted" );
+
+    note( "Result from delete ", pp($result) );
+
+    $ora_test->logout();
 }
 
 done_testing();
