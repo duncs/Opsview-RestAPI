@@ -7,7 +7,7 @@ package Opsview::RestAPI;
 # ABSTRACT: Interact with the Opsview Rest API interface
 
 use Data::Dump qw(pp);
-use Carp qw(croak confess);
+use Carp qw(croak);
 use REST::Client;
 use JSON;
 use URI::Encode::XS qw(uri_encode);
@@ -111,48 +111,6 @@ sub url      { return $_[0]->{url} }
 sub username { return $_[0]->{username} }
 sub password { return $_[0]->{password} }
 
-sub _parse_response {
-    my ($self) = @_;
-
-    my $deadlock_attempts = 0;
-DEADLOCK: {
-        $self->_log( 2, "Back from client call" );
-
-        if ( $self->_client->responseCode ne 200 ) {
-            if (   $deadlock_attempts < 5
-                && $self->_client->responseContent =~ m/deadlock/i )
-            {
-                $deadlock_attempts++;
-                warn "Encountered deadlock: ",
-                    $self->_client->responseContent();
-                warn "Retrying (count: $deadlock_attempts)";
-                redo DEADLOCK;
-            }
-            else {
-                my %json = $self->_parse_response_to_json( $self->_client->responseCode, $self->_client->responseContent);
-#                my %json = eval {
-#                    $self->_json->decode( $self->_client->responseContent );
-#                };
-                my %exception = (
-                    type      => $self->{type},
-                    url       => $self->url,
-                    http_code => $self->_client->responseCode,
-                    %json,
-                );
-
-                # json parse failed; return the resonse content unmolested
-                $exception{message} = $self->_client->responseContent
-                    unless ( $exception{message} );
-                confess( Opsview::RestAPI::Exception->new(%exception) );
-            }
-        }
-    }
-
-    my $result = $self->_client->responseContent();
-
-    return $self->_parse_response_to_json( $self->_client->responseCode, $self->_client->responseContent() )
-}
-
 sub _parse_response_to_json {
     my($self, $code, $response) = @_;
 
@@ -160,17 +118,16 @@ sub _parse_response_to_json {
 
     my $json_result = eval { $self->_json->decode($response); };
 
-    if ($@) {
+    if (my $error = $@) {
         my %exception = (
             type      => $self->{type},
             url       => $self->url,
             http_code => $code,
-            \$json_result,
+            eval_error => $error,
+            response  => $response,
         );
 
-        # json parse failed; return the resonse content unmolested
-        $exception{message} = $response unless ( $exception{message} );
-        confess( Opsview::RestAPI::Exception->new(%exception) );
+        croak( Opsview::RestAPI::Exception->new(%exception) );
     }
 
     $self->_log( 2, "result: ", pp($json_result) );
@@ -202,9 +159,27 @@ sub _query {
         pp($data) );
 
     my $type = $self->{type};
-    $self->_client->$type( $url, $data );
 
-    return $self->_parse_response;
+    my $deadlock_attempts = 0;
+    DEADLOCK: {
+        $self->_client->$type( $url, $data );
+
+        if ( $self->_client->responseCode ne 200 ) {
+            $self->_log( 2, "Non-200 response - checking for deadlock" );
+            if (   $self->_client->responseContent =~ m/deadlock/i
+                && $deadlock_attempts < 5 )
+            {
+                $deadlock_attempts++;
+                $self->_log( 1,  "Encountered deadlock: ",
+                    $self->_client->responseContent());
+                $self->_log( 1,  "Retrying (count: $deadlock_attempts)");
+                sleep 1;
+                redo DEADLOCK;
+            }
+        }
+    }
+
+    return $self->_parse_response_to_json( $self->_client->responseCode, $self->_client->responseContent() )
 }
 
 =item $rest->login
@@ -554,13 +529,16 @@ sub reload { return $_[0]->post( api => 'reload' ) }
 
 =item $result = $rest->reload_pending();
 
-Check to see if there are any pending rconfigurfation changes that require
+Check to see if there are any pending configuration changes that require
 a reload to be performed
 
 =cut
 
 sub reload_pending {
     my $result = $_[0]->get( api => 'reload' );
+    if(! defined $result->{configuration_status}) {
+        croak( Opsview::RestAPI::Exception->new(message => "'configuration_status' not found", result => $result ) );
+    }
     return $result->{configuration_status} eq 'pending' ? 1 : 0;
 }
 
