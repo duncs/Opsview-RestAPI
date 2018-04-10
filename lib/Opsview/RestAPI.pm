@@ -6,6 +6,7 @@ package Opsview::RestAPI;
 
 # ABSTRACT: Interact with the Opsview Rest API interface
 
+use version;
 use Data::Dump qw(pp);
 use Carp qw(croak);
 use REST::Client;
@@ -28,7 +29,7 @@ use Opsview::RestAPI::Exception;
 
   my %api_version=$rest->api_version;
   $rest->login;
-  my %opsview_version=$rest->opsview_version;
+  my %opsview_info=$rest->opsview_info;
   $rest->logout;
 
 =head1 DESCRIPTION
@@ -292,6 +293,20 @@ sub opsview_info {
     }
     return $self->{opsview_info};
 }
+
+=item $verion = $rest->opsview_version
+
+Return a Version Object for the version of Opsview.  Implicitly calls
+C<opsview_info> if required.  See L<version> for more details
+
+=cut
+
+sub opsview_version {
+    my ($self) = @_;
+
+    return qv( $self->opsview_info->{opsview_version} );
+}
+
 
 =item $build = $rest->opsview_build
 
