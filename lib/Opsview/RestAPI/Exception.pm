@@ -35,28 +35,37 @@ use overload
 
 =item $object = Opsview::RestAPI::Exception->new( ... )
 
-Create a new exception object.  By default will add in package, path and line the exception occurred on
+Create a new exception object.  By default will add in package, filename and line the exception occurred on
 
 =cut
 
 sub new {
     my ( $class, %args ) = @_;
-    ( $args{package}, $args{path}, $args{line} ) = caller 0;
 
-    return bless {%args}, $class;
+    my @caller_keys
+        = (
+        qw/ package filename line subroutine hasargs wantarray evaltext is_require hints bitmask hinthash /
+        );
+
+    bless { %args, map { $caller_keys[$_] => ( caller(0) )[$_] } ( 0 .. 10 ), }, $class;
 }
 
 =item $line = $object->line;
+
 =item $path = $object->path;
+
+=item $filename = $object->filename;
+
 =item $package = $object->package;
 
 Return the line, path and package the exception occurred in
 
 =cut
 
-sub line { $_[0]->{line} };
-sub path { $_[0]->{path} };
-sub package { $_[0]->{package} };
+sub line     { $_[0]->{line} }
+sub path     { $_[0]->{filename} }
+sub filename { $_[0]->{filename} }
+sub package  { $_[0]->{package} }
 
 =item $message = $object->message;
 
@@ -86,8 +95,8 @@ Concatinate the message, path and line into a string string
 
 sub as_string {
     my $self = shift;
-    return sprintf( "%s at %s line %s.",
-        $self->{message}, $self->{path}, $self->{line} );
+    return sprintf( "%s at %s line %s.\n",
+        $self->message, $self->path, $self->line );
 }
 
 =back
