@@ -8,7 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.180750
+version 1.181000
 
 =head1 SYNOPSIS
 
@@ -219,7 +219,7 @@ Make a request to initiate a synchronous reload.  An alias to
 
 =item $result = $rest->reload_pending();
 
-Check to see if there are any pending rconfigurfation changes that require
+Check to see if there are any pending configuration changes that require
 a reload to be performed
 
 =item $result = $rest->file_upload( api => ..., local_file => ..., remote_file => ... );
