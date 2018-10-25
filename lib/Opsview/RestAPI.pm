@@ -37,6 +37,10 @@ use Opsview::RestAPI::Exception;
 Allow for easier access to the Opsview Monitor Rest API, version 4.x and newer.
 See L<https://knowledge.opsview.com/reference> for more details.
 
+=head1 EXAMPLES
+
+Please see the files within the C<examples> and C<t/> test directory.
+
 =head1 METHODS
 
 =over 4
@@ -219,7 +223,7 @@ sub login {
             api    => "login",
             params => {
                 username => $self->{username},
-                password => uri_encode( $self->{password} ),
+                password => $self->{password},
             },
         );
     } or do {
