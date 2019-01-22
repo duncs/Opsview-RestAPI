@@ -42,12 +42,21 @@ Create a new exception object.  By default will add in package, filename and lin
 sub new {
     my ( $class, %args ) = @_;
 
-    my @caller_keys
-        = (
-        qw/ package filename line subroutine hasargs wantarray evaltext is_require hints bitmask hinthash /
-        );
+    my @caller_keys = (
+        qw/ package filename line subroutine hasargs wantarray evaltext is_require / 
+    );
+    #hints bitmask hinthash /
 
-    bless { %args, map { $caller_keys[$_] => ( caller(0) )[$_] } ( 0 .. 10 ), }, $class;
+    # Build up the callstack to a max of 7 levels
+    my $i=0;
+    do {
+        my @caller = (caller($i++));
+        return unless(@caller);
+
+        push( @{ $args{callstack} }, { map { $caller_keys[$_] => $caller[$_] } ( 0 .. $#caller_keys) } );
+    } while ( $i < 7 );
+
+    bless { %args }, $class;
 }
 
 =item $line = $object->line;
@@ -62,10 +71,10 @@ Return the line, path and package the exception occurred in
 
 =cut
 
-sub line     { $_[0]->{line} }
-sub path     { $_[0]->{filename} }
-sub filename { $_[0]->{filename} }
-sub package  { $_[0]->{package} }
+sub line     { $_[0]->{callstack}[0]{line} }
+sub path     { $_[0]->{callstack}[0]{filename} }
+sub filename { $_[0]->{callstack}[0]{filename} }
+sub package  { $_[0]->{callstack}[0]{package} }
 
 =item $message = $object->message;
 

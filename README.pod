@@ -10,6 +10,28 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 version 1.181000
 
+=head1 BUILDING AND INSTALLING
+
+This is a Perl module distribution. It should be installed with whichever
+tool you use to manage your installation of Perl, e.g. any of
+
+    cpanm .
+    cpan  .
+    cpanp -i .
+
+Consult http://www.cpan.org/modules/INSTALL.html for further instruction.
+
+Should you wish to install this module manually, the procedure is
+
+    perl Makefile.PL
+    make
+    make test
+    make install
+
+You can amend where the module will be installed using
+
+  perl Makefile.PL LIB=/path/to/perl/lib INSTALLSITEMAN3DIR=/path/to/perl/man/man3
+
 =head1 SYNOPSIS
 
   use Opsview::RestAPI;
@@ -24,7 +46,7 @@ version 1.181000
 
   my %api_version=$rest->api_version;
   $rest->login;
-  my %opsview_version=$rest->opsview_version;
+  my %opsview_info=$rest->opsview_info;
   $rest->logout;
 
 =head1 DESCRIPTION
@@ -86,6 +108,11 @@ Example hashref:
     server_timezone_offset => 0,
     uuid                   => "ABCDEF12-ABCD-ABCD-ABCD-ABCDEFABCDEF",
   }
+
+=item $version = $rest->opsview_version
+
+Return a Version Object for the version of Opsview.  Implicitly calls
+C<opsview_info> if required.  See L<version> for more details
 
 =item $build = $rest->opsview_build
 
