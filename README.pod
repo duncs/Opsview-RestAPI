@@ -8,29 +8,7 @@ Opsview::RestAPI - Interact with the Opsview Rest API interface
 
 =head1 VERSION
 
-version 1.181000
-
-=head1 BUILDING AND INSTALLING
-
-This is a Perl module distribution. It should be installed with whichever
-tool you use to manage your installation of Perl, e.g. any of
-
-    cpanm .
-    cpan  .
-    cpanp -i .
-
-Consult http://www.cpan.org/modules/INSTALL.html for further instruction.
-
-Should you wish to install this module manually, the procedure is
-
-    perl Makefile.PL
-    make
-    make test
-    make install
-
-You can amend where the module will be installed using
-
-  perl Makefile.PL LIB=/path/to/perl/lib INSTALLSITEMAN3DIR=/path/to/perl/man/man3
+version 1.190220
 
 =head1 SYNOPSIS
 
@@ -53,6 +31,32 @@ You can amend where the module will be installed using
 
 Allow for easier access to the Opsview Monitor Rest API, version 4.x and newer.
 See L<https://knowledge.opsview.com/reference> for more details.
+
+=head1 BUILDING AND INSTALLING
+
+This is a Perl module distribution. It should be installed with whichever
+tool you use to manage your installation of Perl, e.g. any of
+
+  cpanm .
+  cpan  .
+  cpanp -i .
+
+Consult http://www.cpan.org/modules/INSTALL.html for further instruction.
+
+Should you wish to install this module manually, the procedure is
+
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+You can amend where the module will be installed using
+
+  perl Makefile.PL LIB=/path/to/perl/lib INSTALLSITEMAN3DIR=/path/to/perl/man/man3
+
+=head1 EXAMPLES
+
+Please see the files within the C<examples> and C<t/> test directory.
 
 =head1 METHODS
 

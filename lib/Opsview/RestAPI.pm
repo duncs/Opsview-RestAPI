@@ -15,6 +15,28 @@ use URI::Encode::XS qw(uri_encode);
 
 use Opsview::RestAPI::Exception;
 
+=head1 BUILDING AND INSTALLING
+
+This is a Perl module distribution. It should be installed with whichever
+tool you use to manage your installation of Perl, e.g. any of
+
+  cpanm .
+  cpan  .
+  cpanp -i .
+
+Consult http://www.cpan.org/modules/INSTALL.html for further instruction.
+
+Should you wish to install this module manually, the procedure is
+
+  perl Makefile.PL
+  make
+  make test
+  make install
+
+You can amend where the module will be installed using
+
+  perl Makefile.PL LIB=/path/to/perl/lib INSTALLSITEMAN3DIR=/path/to/perl/man/man3
+
 =head1 SYNOPSIS
 
   use Opsview::RestAPI;
@@ -130,6 +152,7 @@ sub _parse_response_to_json {
             http_code => $code,
             eval_error => $error,
             response  => $response,
+            message  => "Failed to read JSON in response from server ($response)",
         );
 
         croak( Opsview::RestAPI::Exception->new(%exception) );
@@ -298,7 +321,7 @@ sub opsview_info {
     return $self->{opsview_info};
 }
 
-=item $verion = $rest->opsview_version
+=item $version = $rest->opsview_version
 
 Return a Version Object for the version of Opsview.  Implicitly calls
 C<opsview_info> if required.  See L<version> for more details
