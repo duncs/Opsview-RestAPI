@@ -1,6 +1,9 @@
 Revision history for {{$dist->name}}
 
 {{$NEXT}}
+- Allow arrays within params
+
+1.190220  2019-01-22 11:35:52+00:00 Europe/London
 - Add in $rest->opsview_version call
 - Improve exception object for showing error details
 - Add in build and install instructions to README

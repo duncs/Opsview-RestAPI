@@ -132,7 +132,7 @@ sub _dump {
 
 Return the settings the object was configured with
 
-=cut 
+=cut
 
 sub url      { return $_[0]->{url} }
 sub username { return $_[0]->{username} }
@@ -177,9 +177,23 @@ sub _query {
     $self->{type} = $args{type};
     $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
     my $url = "/rest/" . ( $args{api} || '' );
-    my $params = join '&',
-        map { "$_=" . uri_encode( $args{params}{$_} ) }
-        keys( %{ $args{params} } );
+
+    my @param_list;
+
+    for my $param ( keys( %{ $args{params} } ) ) {
+        if ( ! ref($args{params}{$param}) ) {
+            push(@param_list, $param . '=' . uri_encode( $args{params}{$param} ) );
+        } elsif (ref($args{params}{$param}) eq "ARRAY" ) {
+            for my $arg ( @{ $args{params}{$param} }) {
+                push(@param_list, $param . '=' . uri_encode( $arg ) );
+            }
+        } else {
+            croak( Opsview::RestAPI::Exception->new( message => "Parameter '$param' is not an accepted type: " . ref( $args{params}{$param} ) ) );
+        }
+    }
+
+    my $params = join( '&', @param_list);
+
     $url .= '?' . $params;
     my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
 
@@ -212,7 +226,7 @@ sub _query {
 
 =item $rest->login
 
-Authenticate with the Opsvsiew server using the credentials given in C<new()>.  
+Authenticate with the Opsvsiew server using the credentials given in C<new()>.
 This must be done before any other calls (except C<api_version>) are performed.
 
 =cut
@@ -271,7 +285,7 @@ sub login {
 
 =item $api_version = $rest->api_version
 
-Return a hash reference with details about the Rest API version in 
+Return a hash reference with details about the Rest API version in
 the Opsview Monitor instance.  May be called without being logged in.
 
 Example hashref:
@@ -295,7 +309,7 @@ sub api_version {
 
 =item $version = $rest->opsview_info
 
-Return a hash reference contianing some details about the Opsview 
+Return a hash reference contianing some details about the Opsview
 Monitor instance.
 
 Example hashref:
@@ -349,8 +363,8 @@ sub opsview_build {
 
 =item $interval = $rest->interval($seconds);
 
-Return the interval to use when setting check_interval or retry_interval.  
-Opsview 4.x used seconds whereas Opsview 5.x uses minutes.  
+Return the interval to use when setting check_interval or retry_interval.
+Opsview 4.x used seconds whereas Opsview 5.x uses minutes.
 
   ....
   check_interval         => $rest->interval(300),
@@ -365,7 +379,7 @@ will set an interval time of 5 minutes (300 seconds) in both 4.xand 5.x
 On Opsview 5.x this will set an interval time of 20 seconds
 On Opsview 4.x this will set an interval time of 1 minute
 
-=cut 
+=cut
 
 sub interval {
     my ( $self, $interval ) = @_;
@@ -387,7 +401,7 @@ sub interval {
 =item $result = $rest->delete( api => ..., data => { ... }, params => { ... } );
 
 Method call on the Rest API to interact with Opsview.  See the online
-documentation at L<https://knowledge.opsview.com/reference> for more 
+documentation at L<https://knowledge.opsview.com/reference> for more
 information.
 
 The endpoint, data and parameters are all specified as a hash passed to the
@@ -412,19 +426,19 @@ To create a user:
 
   $rest->put(
     api  => 'config/contact',
-    data => {       
+    data => {
     name        => 'userid',
     fullname    => 'User Name',
     password    => $some_secure_password,
     role        => { name => 'View all, change none', },
     enable_tips => 0,
-    variables => 
+    variables =>
       [ { name => "EMAIL", value => 'email@example.com' }, ],
     },
   );
 
 To search for a host called 'MyHost0' and print specific details.  Note, some
-API endpoints will always return an array, no matter how many objects are 
+API endpoints will always return an array, no matter how many objects are
 returned:
 
   $hosts = $rest->get(
@@ -438,6 +452,24 @@ returned:
   print "Hostgroup: ", $myhost->{hostgroup}->{name}, $/;
   print "IP Address: ", $myhost->{ip}, $/;
 
+You can also search for a name like this:
+
+  $hosts = $rest->get(
+    api => 'config/host',
+    params => {
+        s.name => 'MyHost0',
+    },
+  );
+
+To search for 'name1 OR name2' use:
+
+  $hosts = $rest->get(
+    api => 'config/host',
+    params => {
+        s.name => [ 'name1', 'name2' ],
+    },
+  );
+
 For some objects it may be useful to print out the returned data structure
 so you can see what can be modified. Using the ID of the above host:
 
@@ -446,9 +478,9 @@ so you can see what can be modified. Using the ID of the above host:
     api => 'config/host/2'
   );
   $myhost = $hosts->list->[0];
-  print pp($host); # prints the data structure to STDOUT 
+  print pp($host); # prints the data structure to STDOUT
 
-The data can then be modified and sent back using 'put' (put updates, 
+The data can then be modified and sent back using 'put' (put updates,
 post creates):
 
   $myhost->{ip} = '127.10.10.10';
@@ -458,11 +490,11 @@ post creates):
   );
   print pp($result); # contains full updated host info from Opsview
 
-Be aware that fetching or sending too much data in one go may cause a timeout 
-via the proxy server used with Opsview (Apache2 by default) so processing the 
-data in batches in the client may be required.  
+Be aware that fetching or sending too much data in one go may cause a timeout
+via the proxy server used with Opsview (Apache2 by default) so processing the
+data in batches in the client may be required.
 
-C<get> (only) will handle this batching of data for you if you use the option 
+C<get> (only) will handle this batching of data for you if you use the option
 C<batch_size => <size>> (all other methods ignore this).
 
   $hosts = $rest->get(
@@ -633,7 +665,7 @@ sub file_upload {
 
 =item  $result = $rest->logout();
 
-Delete the login session held by Opsview Monitor and invalidate the 
+Delete the login session held by Opsview Monitor and invalidate the
 internally stored data structures.
 
 =cut
