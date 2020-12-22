@@ -82,7 +82,7 @@ sub new {
     my $self = bless {%args}, $class;
 
     $self->{url} ||= 'http://localhost';
-    $self->{ssl_verify_hostname} //= 1;
+    $self->{ssl_verify_hostname} = defined $args{ssl_verify_hostname} ? $args{ssl_verify_hostname} : 1;
     $self->{username} ||= 'admin';
     $self->{password} ||= 'initial';
     $self->{debug} //= 0;
@@ -145,20 +145,31 @@ sub _parse_response_to_json {
 
     my $json_result = eval { $self->_json->decode($response); };
 
-    if (my $error = $@) {
-        my %exception = (
+    my %call_info = (
             type      => $self->{type},
             url       => $self->url,
             http_code => $code,
-            eval_error => $error,
             response  => $response,
+    );
+
+    if (my $error = $@) {
+        my %exception = (
+            eval_error => $error,
             message  => "Failed to read JSON in response from server ($response)",
         );
 
-        croak( Opsview::RestAPI::Exception->new(%exception) );
+        croak( Opsview::RestAPI::Exception->new(%call_info, %exception) );
     }
 
     $self->_log( 2, "result: ", pp($json_result) );
+
+    if ( $json_result->{message}) {
+        croak( Opsview::RestAPI::Exception->new(
+            %call_info,
+            response => $response,
+            message => $json_result->{message},
+        ));
+    }
 
     return $json_result;
 }
