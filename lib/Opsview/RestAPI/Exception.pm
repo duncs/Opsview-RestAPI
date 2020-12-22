@@ -104,7 +104,8 @@ Concatinate the message, path and line into a string string
 
 sub as_string {
     my $self = shift;
-    return sprintf( "%s at %s line %s.\n",
+
+    return sprintf( "Error: %s at %s line %s.\n",
         $self->message, $self->path, $self->line );
 }
 
