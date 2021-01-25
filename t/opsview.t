@@ -12,6 +12,7 @@ my %opsview = (
     url      => 'http://localhost',
     username => 'admin',
     password => 'initial',
+    ssl_verify_hostname => 0,
 );
 
 for my $var (qw/ url username password /) {
