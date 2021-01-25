@@ -174,25 +174,19 @@ sub _parse_response_to_json {
     return $json_result;
 }
 
-sub _query {
+sub _generate_url {
     my ( $self, %args ) = @_;
-    croak "Unknown type '$args{type}'"
-        if ( $args{type} !~ m/^(GET|POST|PUT|DELETE)$/ );
 
-    croak( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
-        unless ( $self->{token}
-        || !defined( $args{api} )
-        || !$args{api}
-        || $args{api} =~ m/login/ );
-
-    $self->{type} = $args{type};
     $args{api} =~ s!^/rest/!!;    # tidy any 'ref' URL we may have been given
-    my $url = "/rest/" . ( $args{api} || '' );
+
+    my $url = "/rest" . ( $args{api} ? '/' . $args{api} : '' );
 
     my @param_list;
 
-    for my $param ( keys( %{ $args{params} } ) ) {
-        if ( ! ref($args{params}{$param}) ) {
+    for my $param ( sort keys( %{ $args{params} } ) ) {
+        if ( ! defined $args{params}{$param} ) {
+          croak( Opsview::RestAPI::Exception->new( message => "Parameter '$param' is not valid" ) );
+        } elsif ( ! ref($args{params}{$param}) ) {
             push(@param_list, $param . '=' . uri_encode( $args{params}{$param} ) );
         } elsif (ref($args{params}{$param}) eq "ARRAY" ) {
             for my $arg ( @{ $args{params}{$param} }) {
@@ -205,7 +199,26 @@ sub _query {
 
     my $params = join( '&', @param_list);
 
-    $url .= '?' . $params;
+    $url .= '?' . $params if $params;
+
+    return $url;
+}
+
+sub _query {
+    my ( $self, %args ) = @_;
+    croak "Unknown type '$args{type}'"
+        if ( $args{type} !~ m/^(GET|POST|PUT|DELETE)$/ );
+
+    croak( Opsview::RestAPI::Exception->new( message => "Not logged in" ) )
+        unless ( $self->{token}
+        || !defined( $args{api} )
+        || !$args{api}
+        || $args{api} =~ m/login/ );
+
+    $self->{type} = $args{type};
+
+    my $url = $self->_generate_url( %args );
+
     my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
 
     $self->_log( 2, "TYPE: $self->{type} URL: $url DATA: ",
