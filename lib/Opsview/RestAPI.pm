@@ -43,7 +43,7 @@ You can amend where the module will be installed using
 
   my $rest=Opsview::RestAPI();
   # equivalent to
-  my $rest=Opsview::RestAPI(
+  my $rest=Opsview::RestAPI->new(
       url => 'http://localhost',
       username => 'admin',
       password => 'initial',

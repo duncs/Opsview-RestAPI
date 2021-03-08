@@ -1,6 +1,9 @@
 Revision history for {{$dist->name}}
 
 {{$NEXT}}
+- Corrected SYNOPSIS in the documentation
+- Skip 'file_upload' tests if uploads are blocked
+- Tests assume no TLS certificate checking
 
 1.210250  2021-01-25 16:12:50+00:00 Europe/London
 - Improved version handling
