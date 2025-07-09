@@ -96,7 +96,9 @@ sub new {
 
     # Set the SSL options for use with https connections
     $self->_client->getUseragent->ssl_opts(
-        verify_hostname => $self->{ssl_verify_hostname} );
+        verify_hostname => $self->{ssl_verify_hostname},
+        SSL_verify_mode => $self->{ssl_verify_hostname},
+    );
 
     # Make sure we follow any redirects if originally given
     # http but get redirected to https
@@ -145,6 +147,8 @@ sub _parse_response_to_json {
 
     my $json_result = eval { $self->_json->decode($response); };
 
+    my $error=$@;
+
     my %call_info = (
             type      => $self->{type},
             url       => $self->url,
@@ -152,7 +156,7 @@ sub _parse_response_to_json {
             response  => $response,
     );
 
-    if (my $error = $@) {
+    if ($error) {
         my %exception = (
             eval_error => $error,
             message  => "Failed to read JSON in response from server ($response)",
@@ -216,7 +220,6 @@ sub _query {
         || $args{api} =~ m/login/ );
 
     $self->{type} = $args{type};
-
     my $url = $self->_generate_url( %args );
 
     my $data = $args{data} ? $self->_json->encode( $args{data} ) : undef;
@@ -230,17 +233,26 @@ sub _query {
     DEADLOCK: {
         $self->_client->$type( $url, $data );
 
-        if ( $self->_client->responseCode ne 200 ) {
-            $self->_log( 2, "Non-200 response - checking for deadlock" );
-            if (   $self->_client->responseContent =~ m/deadlock/i
-                && $deadlock_attempts < 5 )
-            {
-                $deadlock_attempts++;
-                $self->_log( 1,  "Encountered deadlock: ",
-                    $self->_client->responseContent());
-                $self->_log( 1,  "Retrying (count: $deadlock_attempts)");
-                sleep 1;
-                redo DEADLOCK;
+        if ( not $self->_client->{_res}->is_success ) {
+            $self->_log( 2, "Got HTTP code: ".$self->_client->responseCode." - checking for deadlock" );
+            $self->_log( 2, "Got HTTP response: ".$self->_client->responseContent );
+            if (  $self->_client->responseContent =~ m/deadlock/i ) {
+                if ( $deadlock_attempts < 5 )
+                {
+                    $deadlock_attempts++;
+                    $self->_log( 1,  "Encountered deadlock: ",
+                        $self->_client->responseContent());
+                    $self->_log( 1,  "Retrying (count: $deadlock_attempts)");
+                    sleep 1;
+                    redo DEADLOCK;
+                }
+            } else {
+                croak(
+                    Opsview::RestAPI::Exception->new(
+                        message => $self->_client->responseContent,
+                        code => $self->_client->responseCode,
+                    )
+                );
             }
         }
     }
@@ -262,7 +274,7 @@ sub login {
     my $api_version = $self->api_version;
     if ( $api_version->{api_version} < 4.0 ) {
         croak(
-            Opsview::RestPI::Exception->new(
+            Opsview::RestAPI::Exception->new(
                 message => $self->{url}
                     . " is running Opsview version "
                     . $api_version->{api_version}
@@ -287,7 +299,9 @@ sub login {
                 password => $self->{password},
             },
         );
-    } or do {
+    };
+
+    if ($@) {
         my $e = $@;
         $self->_log( 2, "Exception object:" );
         $self->_dump( 2, $e );

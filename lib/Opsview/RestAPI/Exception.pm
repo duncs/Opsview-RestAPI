@@ -49,12 +49,13 @@ sub new {
 
     # Build up the callstack to a max of 7 levels
     my $i=0;
-    do {
+    # note '{{' is to allow use of 'last'
+    do {{
         my @caller = (caller($i++));
-        return unless(@caller);
+        last unless(@caller);
 
         push( @{ $args{callstack} }, { map { $caller_keys[$_] => $caller[$_] } ( 0 .. $#caller_keys) } );
-    } while ( $i < 7 );
+    }} while ( $i < 7 );
 
     bless { %args }, $class;
 }
