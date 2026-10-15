@@ -291,12 +291,45 @@ NOTE: This will only upload the plugin; it will not import it.  Use the followin
         },
     );
 
+=item $rest->set_session( username => $user, token => $token );
+
+Apply an existing login token without calling C<login>.
+
 =item $result = $rest->logout();
 
 Delete the login session held by Opsview Monitor and invalidate the
 internally stored data structures.
 
 =item $rest->remove_keys_from_hash($hashref, $arrayref);
+
+=head1 COMMAND LINE TOOL
+
+After installation, the C<opsview_rest_api> program (in C<bin/>) provides
+remote CLI access to the REST API, similar to Opsview's C<opsview_rest> tool.
+
+  opsview_rest_api [options] [[METHOD] endpoint]
+
+With no arguments it authenticates and prints C<opsview_info> as pretty JSON.
+Use B<--yaml> for YAML output. Default URL is C<https://localhost>, or
+C<OPSVIEW_URL> when set and B<-U> is omitted; credentials default to C<admin> /
+C<initial>, or C<OPSVIEW_USERNAME> / C<OPSVIEW_PASSWORD> when those environment
+variables are set and the matching options are omitted.
+
+A token cache at F<$HOME/.opsview-restapi-token.json> (override with
+B<--token-file>) is written after password login and reused in preference to
+CLI credentials. B<POST logout> invalidates the session and removes the cache
+file.
+
+Examples:
+
+  opsview_rest_api -U https://opsview.example GET info
+
+  opsview_rest_api GET 'config/hostgroup?json_filter={"name":"AAA MyHosts"}'
+
+  opsview_rest_api POST 'status?hostname=MyHost0&servicename=Always OK' \
+    --data='{"new_state":2,"comment":"Forced failure to test notifications"}'
+
+Run C<opsview_rest_api --man> for full documentation.
 
 =back
 
