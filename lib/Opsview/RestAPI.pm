@@ -321,6 +321,29 @@ sub login {
     return $self;
 }
 
+=item $rest->set_session( username => $user, token => $token );
+
+Apply an existing login token (and optional username) without calling
+C<login>.  Sets the C<X-Opsview-Username> and C<X-Opsview-Token> headers
+used for authenticated API calls.
+
+=cut
+
+sub set_session {
+    my ( $self, %args ) = @_;
+
+    croak( Opsview::RestAPI::Exception->new( message => 'token is required' ) )
+        unless $args{token};
+
+    $self->{username} = $args{username} if defined $args{username};
+    $self->{token}    = $args{token};
+
+    $self->_client->addHeader( 'X-Opsview-Username', $self->{username} );
+    $self->_client->addHeader( 'X-Opsview-Token',    $self->{token} );
+
+    return $self;
+}
+
 =item $api_version = $rest->api_version
 
 Return a hash reference with details about the Rest API version in

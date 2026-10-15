@@ -1,0 +1,609 @@
+#!/usr/bin/env perl
+use 5.12.1;
+use strict;
+use warnings;
+
+use FindBin qw($Bin);
+BEGIN {
+    my $dev_lib = "$Bin/../lib";
+    unshift @INC, $dev_lib if -e "$dev_lib/Opsview/RestAPI.pm";
+}
+
+use Carp qw(croak);
+use Getopt::Long qw(:config no_ignore_case bundling no_auto_abbrev);
+use JSON ();
+use Opsview::RestAPI ();
+use Opsview::RestAPI::Exception ();
+use Pod::Usage qw(pod2usage);
+
+my $VERSION = '0.1';
+
+my @HTTP_METHODS = qw(GET POST PUT DELETE);
+
+sub default_token_file {
+    my $home = $ENV{HOME} // croak "HOME is not set; use --token-file\n";
+    return "$home/.opsview-restapi-token.json";
+}
+
+sub parse_endpoint {
+    my ($endpoint) = @_;
+
+    $endpoint =~ s!^/rest/!!;
+    $endpoint =~ s!^/!!;
+
+    my ( $api, $query ) = split( /\?/, $endpoint, 2 );
+    $api //= '';
+
+    return ( $api, parse_query_string($query) );
+}
+
+sub parse_query_string {
+    my ($query) = @_;
+    my %params;
+
+    return \%params unless defined $query && length $query;
+
+    for my $pair ( split /&/, $query ) {
+        next unless length $pair;
+        my ( $key, $value ) = split /=/, $pair, 2;
+        next unless defined $key && length $key;
+        $value //= '';
+
+        if ( exists $params{$key} ) {
+            my $existing = $params{$key};
+            if ( ref($existing) eq 'ARRAY' ) {
+                push @{$existing}, $value;
+            }
+            else {
+                $params{$key} = [ $existing, $value ];
+            }
+        }
+        else {
+            $params{$key} = $value;
+        }
+    }
+
+    return \%params;
+}
+
+sub merge_params {
+    my ( $from_endpoint, $from_cli ) = @_;
+    my %merged = %{$from_endpoint};
+
+    for my $key ( keys %{$from_cli} ) {
+        $merged{$key} = $from_cli->{$key};
+    }
+
+    return \%merged;
+}
+
+sub merge_cli_param {
+    my ( $params, $spec ) = @_;
+
+    my ( $key, $value ) = split( /=/, $spec, 2 );
+    croak "Invalid --param '$spec' (expected key=value)\n" unless defined $key && length $key;
+
+    if ( exists $params->{$key} ) {
+        my $existing = $params->{$key};
+        if ( ref($existing) eq 'ARRAY' ) {
+            push @{$existing}, $value;
+        }
+        else {
+            $params->{$key} = [ $existing, $value ];
+        }
+    }
+    else {
+        $params->{$key} = $value;
+    }
+}
+
+sub read_request_body {
+    my (%opts) = @_;
+
+    my $sources = 0;
+    $sources++ if defined $opts{data};
+    $sources++ if defined $opts{data_file};
+    $sources++ if defined $opts{content_file};
+
+    croak "Use only one of --data, --data-file, or --content-file\n" if $sources > 1;
+
+    my $raw;
+    if ( defined $opts{data} ) {
+        $raw = $opts{data};
+    }
+    elsif ( defined $opts{data_file} ) {
+        open my $fh, '<', $opts{data_file}
+            or croak "Cannot read --data-file '$opts{data_file}': $!\n";
+        local $/;
+        $raw = <$fh>;
+    }
+    elsif ( defined $opts{content_file} ) {
+        open my $fh, '<', $opts{content_file}
+            or croak "Cannot read --content-file '$opts{content_file}': $!\n";
+        local $/;
+        $raw = <$fh>;
+    }
+    else {
+        return;
+    }
+
+    my $json = JSON->new->utf8;
+    return eval { $json->decode($raw) }
+        // croak "Request body is not valid JSON: $@\n";
+}
+
+sub load_token_cache {
+    my ($path) = @_;
+
+    return if !-e $path;
+
+    open my $fh, '<', $path or return;
+    local $/;
+    my $raw = <$fh>;
+    close $fh;
+
+    my $json = JSON->new->utf8;
+    my $data = eval { $json->decode($raw) };
+    return if $@ || ref($data) ne 'HASH';
+
+    return $data
+        if $data->{url} && $data->{username} && $data->{token};
+
+    return;
+}
+
+sub save_token_cache {
+    my ( $path, $rest ) = @_;
+
+    my $json = JSON->new->utf8->canonical;
+    my $payload = {
+        url      => $rest->url,
+        username => $rest->username,
+        token    => $rest->{token},
+    };
+
+    open my $fh, '>', $path or croak "Cannot write token file '$path': $!\n";
+    print {$fh} $json->encode($payload);
+    close $fh;
+    chmod 0600, $path;
+}
+
+sub encode_output {
+    my ( $data, $as_yaml ) = @_;
+
+    if ($as_yaml) {
+        require YAML::PP;
+        return YAML::PP->new->dump($data);
+    }
+
+    return JSON->new->utf8->pretty->encode($data);
+}
+
+sub release_session {
+    my ($rest) = @_;
+    return unless $rest;
+    $rest->{token} = undef;
+    return;
+}
+
+sub emit_error {
+    my ( $err, $as_yaml, $rest ) = @_;
+    release_session($rest);
+
+    my %payload = ( message => "$err" );
+
+    if ( ref($err) && $err->isa('Opsview::RestAPI::Exception') ) {
+        $payload{message} = $err->message // "$err";
+        $payload{http_code} = $err->http_code if defined $err->http_code;
+    }
+
+    print STDERR encode_output( \%payload, $as_yaml );
+    exit 1;
+}
+
+sub auth_failure {
+    my ($err) = @_;
+    return 0 unless ref($err) && $err->isa('Opsview::RestAPI::Exception');
+    my $msg = $err->message // '';
+    return 1 if $msg eq 'Not logged in';
+    return 1 if ( $err->http_code // 0 ) == 401;
+    return 1 if $msg =~ /authorization failure/i;
+    return 1 if $msg =~ /"status"\s*:\s*401\b/;
+    return 0;
+}
+
+sub normalize_url {
+    my ($url) = @_;
+    $url //= '';
+    $url =~ s{/+\z}{};
+    return lc $url;
+}
+
+sub resolve_url {
+    my ($cli_url) = @_;
+    return $cli_url if defined $cli_url;
+    return $ENV{OPSVIEW_URL} if defined $ENV{OPSVIEW_URL} && length $ENV{OPSVIEW_URL};
+    return 'https://localhost';
+}
+
+sub token_cache_for_request {
+    my ( $cache, $request_url ) = @_;
+    return if !$cache || ref($cache) ne 'HASH';
+    if ( normalize_url($request_url) ne normalize_url( $cache->{url} ) ) {
+        return;
+    }
+    return $cache;
+}
+
+sub resolve_credentials {
+    my (%opts) = @_;
+
+    my $url = resolve_url( $opts{url} );
+    my $username = $opts{username};
+    $username = $ENV{OPSVIEW_USERNAME} if !defined $username;
+    $username //= 'admin';
+
+    my $password = $opts{password};
+    $password = $ENV{OPSVIEW_PASSWORD} if !defined $password;
+    $password //= 'initial';
+
+    return ( $url, $username, $password );
+}
+
+sub build_rest_client {
+    my (%args) = @_;
+
+    my $cache = $args{token_cache};
+    if ( $cache && ref($cache) eq 'HASH' ) {
+        my $rest = Opsview::RestAPI->new(
+            url                 => $cache->{url},
+            username            => $cache->{username},
+            ssl_verify_hostname => $args{ssl_verify_hostname},
+            debug               => $args{debug} // 0,
+        );
+        $rest->set_session(
+            username => $cache->{username},
+            token    => $cache->{token},
+        );
+        return ( $rest, 0 );
+    }
+
+    my ( $url, $username, $password ) = resolve_credentials(
+        url      => $args{url},
+        username => $args{username},
+        password => $args{password},
+    );
+
+    my $rest = Opsview::RestAPI->new(
+        url                 => $url,
+        username            => $username,
+        password            => $password,
+        ssl_verify_hostname => $args{ssl_verify_hostname},
+        debug               => $args{debug} // 0,
+    );
+    $rest->login;
+    save_token_cache( $args{token_file}, $rest ) if $args{token_file};
+
+    return ( $rest, 1 );
+}
+
+sub parse_command {
+    my (@argv) = @_;
+
+    my ( $method, $endpoint, $is_logout );
+
+    if ( !@argv ) {
+        $method   = 'GET';
+        $endpoint = 'info';
+    }
+    elsif ( @argv == 1 ) {
+        if ( lc( $argv[0] ) eq 'logout' ) {
+            $is_logout = 1;
+            $method    = 'POST';
+            $endpoint  = 'logout';
+        }
+        elsif ( $argv[0] =~ /^(GET|POST|PUT|DELETE)$/i ) {
+            croak "Missing endpoint after method '$argv[0]'\n";
+        }
+        else {
+            $method   = 'GET';
+            $endpoint = $argv[0];
+        }
+    }
+    else {
+        $method = uc $argv[0];
+        croak "Unknown HTTP method '$method'\n"
+            unless grep { $_ eq $method } @HTTP_METHODS;
+        $endpoint = $argv[1];
+        if ( lc($endpoint) eq 'logout' ) {
+            $is_logout = 1;
+            $method    = 'POST';
+            $endpoint  = 'logout';
+        }
+    }
+
+    return ( $method, $endpoint, $is_logout );
+}
+
+sub invoke_api {
+    my ( $rest, $method, $api, $params, $data ) = @_;
+
+    my %call = ( api => $api );
+    $call{params} = $params if $params && %{$params};
+    $call{data}   = $data   if defined $data;
+
+    my $dispatcher = lc $method;
+    return $rest->$dispatcher(%call);
+}
+
+sub run_with_auth_retry {
+    my (%args) = @_;
+
+    my ( $rest, $did_login ) = build_rest_client(%args);
+
+    my $attempt = sub {
+        my ($client) = @_;
+        return invoke_api(
+            $client,
+            $args{method},
+            $args{api},
+            $args{params},
+            $args{data},
+        );
+    };
+
+    my $result = eval { $attempt->($rest) };
+    if ( my $err = $@ ) {
+        if (   $args{token_cache}
+            && ref( $args{token_cache} ) eq 'HASH'
+            && auth_failure($err)
+            && !$args{retried} )
+        {
+            unlink $args{token_file} if -e $args{token_file};
+            release_session($rest);
+            my ( $rest2, $logged_in ) = build_rest_client(
+                %args,
+                token_cache => undef,
+            );
+            $rest = $rest2;
+            $did_login = 1 if $logged_in;
+            $args{retried} = 1;
+            $result = eval { $attempt->($rest) };
+            $err = $@;
+        }
+        if ($err) {
+            release_session($rest);
+            die $err;
+        }
+    }
+
+    return ( $rest, $result, $did_login );
+}
+
+sub main {
+    my %options = (
+        help    => 0,
+        man     => 0,
+        yaml    => 0,
+        debug   => 0,
+        ssl_verify_hostname => 1,
+    );
+
+    my @param_specs;
+    my ( $data, $data_file, $content_file, $token_file );
+    my ( $cli_url, $cli_username, $cli_password );
+
+    GetOptions(
+        \%options,
+        'help|h|?',
+        'man',
+        'yaml',
+        'url|U=s'      => \$cli_url,
+        'username|u=s' => \$cli_username,
+        'password|p=s' => \$cli_password,
+        'token-file=s' => \$token_file,
+        'data=s'       => \$data,
+        'data-file=s'  => \$data_file,
+        'content-file=s' => \$content_file,
+        'param=s'      => \@param_specs,
+        'no-ssl-verify',
+        'debug:+' => \$options{debug},
+    ) or pod2usage( -verbose => 1 );
+
+    pod2usage( -verbose => 1 ) if $options{'?'} || $options{help};
+    pod2usage( -verbose => 2 ) if $options{man};
+
+    $token_file //= default_token_file();
+
+    my ( $method, $endpoint, $is_logout ) = parse_command(@ARGV);
+    my ( $api, $endpoint_params ) = parse_endpoint($endpoint);
+
+    my %cli_params;
+    merge_cli_param( \%cli_params, $_ ) for @param_specs;
+    my $params = merge_params( $endpoint_params, \%cli_params );
+
+    my $body = read_request_body(
+        data          => $data,
+        data_file     => $data_file,
+        content_file  => $content_file,
+    );
+
+    my $ssl_verify = $options{no_ssl_verify} ? 0 : 1;
+    my $request_url = resolve_url($cli_url);
+    my $token_cache = token_cache_for_request(
+        load_token_cache($token_file), $request_url );
+
+    my $rest;
+    my $result;
+
+    if ($is_logout) {
+        ( $rest, undef ) = build_rest_client(
+            token_file          => $token_file,
+            token_cache         => $token_cache,
+            url                 => $cli_url,
+            username            => $cli_username,
+            password            => $cli_password,
+            ssl_verify_hostname => $ssl_verify,
+            debug               => $options{debug},
+        );
+        $result = eval { $rest->post( api => 'logout' ) };
+        emit_error( $@, $options{yaml}, $rest ) if $@;
+        $rest->{token}        = undef;
+        $rest->{api_version}  = undef;
+        $rest->{opsview_info} = undef;
+        unlink $token_file if -e $token_file;
+    }
+    else {
+        eval {
+            ( $rest, $result ) = run_with_auth_retry(
+                method              => $method,
+                api                 => $api,
+                params              => $params,
+                data                => $body,
+                token_file          => $token_file,
+                token_cache         => $token_cache,
+                url                 => $cli_url,
+                username            => $cli_username,
+                password            => $cli_password,
+                ssl_verify_hostname => $ssl_verify,
+                debug               => $options{debug},
+            );
+        };
+        emit_error( $@, $options{yaml}, $rest ) if $@;
+    }
+
+    print encode_output( $result, $options{yaml} );
+
+    # Avoid DESTROY logout so the cached token remains valid on the server.
+    $rest->{token} = undef unless $is_logout;
+
+    return 0;
+}
+
+exit( main() || 0 );
+
+__END__
+
+=head1 NAME
+
+opsview_rest_api - CLI wrapper for Opsview::RestAPI
+
+=head1 SYNOPSIS
+
+  opsview_rest_api [options] [[METHOD] endpoint]
+
+  # Default: authenticate and print opsview info (JSON)
+  opsview_rest_api
+
+  opsview_rest_api -U https://opsview.example -u admin -p secret GET info
+
+  opsview_rest_api GET 'config/hostgroup?json_filter={"name":"AAA MyHosts"}'
+
+  opsview_rest_api POST 'status?hostname=MyHost0&servicename=Always OK' \
+    --data='{"new_state":2,"comment":"Forced failure to test notifications"}'
+
+  opsview_rest_api POST logout
+
+=head1 DESCRIPTION
+
+Command-line access to the Opsview Monitor REST API via L<Opsview::RestAPI>,
+similar to the C<opsview_rest> tool on an Opsview orchestrator but usable
+from any host with this module installed.
+
+Output is pretty-printed JSON by default; use B<--yaml> for YAML.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-U> I<url>, B<--url>=I<url>
+
+Opsview base URL (default: C<https://localhost>, or C<OPSVIEW_URL> when set
+and B<-U> omitted).
+
+=item B<-u> I<user>, B<--username>=I<user>
+
+Login username if no token cache applies (default: C<admin>, or
+C<OPSVIEW_USERNAME> when set and B<-u> omitted).
+
+=item B<-p> I<pass>, B<--password>=I<pass>
+
+Login password if no token cache applies (default: C<initial>, or
+C<OPSVIEW_PASSWORD> when set and B<-p> omitted).
+
+=item B<--token-file>=I<path>
+
+Token cache file (default: F<$HOME/.opsview-restapi-token.json>).
+When present, its C<url>, C<username>, and C<token> are used instead of
+password login. If the requested URL (from B<--url> or C<OPSVIEW_URL>) does not
+match the cache C<url>, the cache is ignored and a fresh login is performed.
+A 401 or expired token
+clears the cache and retries once with password login.
+
+=item B<--data>=I<json>
+
+JSON request body for POST or PUT.
+
+=item B<--data-file>=I<path>, B<--content-file>=I<path>
+
+Read JSON request body from a file.
+
+=item B<--param> I<key>=I<value>
+
+Additional query parameter (repeatable). Overrides the same key from the
+endpoint query string.
+
+=item B<--yaml>
+
+Emit YAML instead of JSON.
+
+=item B<--no-ssl-verify>
+
+Disable TLS hostname verification (for self-signed certificates).
+
+=item B<--debug>
+
+Increase L<Opsview::RestAPI> debug level (repeatable).
+
+=item B<-h>, B<--help>
+
+Brief help.
+
+=item B<--man>
+
+Full documentation.
+
+=back
+
+=head1 ENDPOINTS
+
+The endpoint argument is an API path under C</rest/>, optionally followed by
+C<?> and a query string. Quote the endpoint in the shell when it contains
+spaces, C<&>, or JSON.
+
+If no endpoint is given, the script calls C<opsview_info> (C<GET info>) to
+verify authentication.
+
+B<logout> or B<POST logout> invalidates the server session, removes the token
+cache file, and prints the API response.
+
+=head1 EXAMPLES
+
+  opsview_rest_api GET 'config/host?json_filter={"name":{"like":"192.168.16.%"}}'
+
+  opsview_rest_api PUT 'config/host/24' --content-file=./patch.json
+
+  opsview_rest_api GET 'status?servicecheck=Uptime Restart&state=2&rows=all'
+
+  opsview_rest_api POST 'status?svc.serviceid=1234' \
+    --data='{"new_state":0,"comment":"Reset to OK"}'
+
+=head1 AUTHOR
+
+Duncan Ferguson
+
+=head1 COPYRIGHT AND LICENSE
+
+Same as L<Opsview::RestAPI>.
+
+=cut

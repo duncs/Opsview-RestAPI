@@ -94,7 +94,9 @@ Return the http_code provided when the object was created
 =cut
 
 sub http_code {
-    return $_[0]->{http_code};
+    my ($self) = @_;
+    return $self->{http_code} if defined $self->{http_code};
+    return $self->{code};
 }
 
 =item $string = $object->as_string
